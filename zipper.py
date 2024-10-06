@@ -4,8 +4,6 @@ import warnings
 import argparse
 from typing import List, Tuple
 from tqdm import tqdm
-from huggingface_hub import HfApi, get_full_repo_name
-from huggingface_hub.utils import RepositoryNotFoundError
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -96,46 +94,12 @@ def parse_size(size_str):
       return int(float(size_str.rstrip(unit)) * units[unit])
   return int(size_str)
 
-def upload_to_huggingface(zip_files: List[str], repo_id: str, token: str):
-  """
-  Uploads a list of files to a Hugging Face repository.
-
-  Args:
-    zip_files (List[str]): List of file paths to upload.
-    repo_id (str): The repository ID on Hugging Face.
-    token (str): The Hugging Face access token.
-  """
-  api = HfApi()
-  user = api.whoami(token=token)["name"]
-  full_repo_name = get_full_repo_name(repo_id, token=token)
-
-  #Check if the repo exist
-  try:
-    api.repo_info(repo_id=full_repo_name, token=token)
-  except RepositoryNotFoundError:
-    raise ValueError(f"Repository '{full_repo_name}' not found. Creating it.")
-
-  # Upload files
-  for file_path in tqdm(zip_files, desc="Uploading to Hugging Face"):
-    api.upload_file(path_or_fileobj=file_path, path_in_repo=os.path.basename(file_path), repo_id=full_repo_name, token=token)
-
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Zip the content of a folder into multiple zip files, each not exceeding a specified size limit, and upload them to a Hugging Face repository.")
   parser.add_argument("path_to_output", help="The directory where the zip files will be saved.")
   parser.add_argument("path_to_files", help="The directory containing files to zip.")
   parser.add_argument("--limit", type=parse_size, default="20GB", help="Maximum size for each zip file (e.g., 100MB, 2GB).")
-  parser.add_argument("--upload", action="store_true", help="If set, upload the zip files to a Hugging Face repository.")
-  parser.add_argument("--repo_id", help="The Hugging Face repository ID (e.g., 'username/repo_name'). Required if '--upload' is set.")
-  parser.add_argument("--token", default=None, help="The Hugging Face access token. If not provided, will use the 'HF_TOKEN' environment variable. Required if '--upload' is set.")
 
   args = parser.parse_args()
 
   zip_files_created = save_in_zip(path_to_output=args.path_to_output, path_to_files=args.path_to_files, limit=args.limit)
-
-  if args.upload:
-    if not args.repo_id:
-      raise ValueError("The '--repo_id' argument is required when '--upload' is set.")
-    token = args.token or os.getenv("HF_TOKEN")
-    if not token:
-      raise ValueError("A Hugging Face access token must be provided via the '--token' argument or the 'HF_TOKEN' environment variable.")
-    upload_to_huggingface(zip_files=zip_files_created, repo_id=args.repo_id, token=token)
